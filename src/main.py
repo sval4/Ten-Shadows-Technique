@@ -40,27 +40,39 @@ class ShadowSummonerApp:
     """
     NUE_CONFIG = {
         "name": "Nue",
-        "frame_folder": "nue_frames",
+        "frame_folder": "../nue_frames",
         "x":0,
         "y":0,
         "frame_size": (745,400),
         "num_animations_loop": 10,
-        "TENSOR_FILE": "nue_tensors.pt",
+        "TENSOR_FILE": "../tensors/nue_tensors.pt",
         "MAX_SAMPLES": 50,
-        "LOSS_THRESHOLD": 0.01,
-        "training_mode": TRAIN_MODE
+        "LOSS_THRESHOLD": 0.01
+    }
+    MAHORAGA_CONFIG = {
+        "name": "Mahoraga",
+        "frame_folder": "../mahoraga_frames",
+        "x":0,
+        "y":0,
+        "frame_size": (800,800),
+        "num_animations_loop": 1,
+        "TENSOR_FILE": "../tensors/mahoraga_tensors.pt",
+        "MAX_SAMPLES": 50,
+        "LOSS_THRESHOLD": 0.1
     }
     # Registry of all available shadows.
     # To add a new shadow, instantiate it here and give it a key.
+    # Right now need to place the shadow in training at the top of the list
     SHADOWS: list[Shadow] = [
+        Shadow(**MAHORAGA_CONFIG),
         Shadow(**NUE_CONFIG)
     ]
 
     def __init__(
         self,
         frames_to_confirm: int = 10,
-        hand_model_path: str = "tasks/hand_landmarker.task",
-        face_model_path: str = "tasks/face_landmarker.task",
+        hand_model_path: str = "../tasks/hand_landmarker.task",
+        face_model_path: str = "../tasks/face_landmarker.task",
         training_mode: bool = False,
         camera_index: int = 0,
         mirrored: bool = True,
@@ -144,16 +156,21 @@ class ShadowSummonerApp:
             left_norm, right_norm = self._normalize_dual_hands(left_raw, right_raw)
             combined = torch.cat((left_norm, right_norm), dim=0)
             matchedStatus = self.summon_status
+            allNone = True
             for shadow in self.SHADOWS:
                 triggered, matchedStatus = shadow.check_summon(left_norm, right_norm, combined, self.training_mode, self.summon_status, self.frames_to_confirm)
+                if matchedStatus[0] != None:
+                    self.summon_status = matchedStatus
+                    allNone = False
                 if triggered:
                     self._animating = True
                     self.currShadow=shadow
+                    allNone = False
                     break
-            self.summon_status = matchedStatus
-
+            if allNone:
+                self.summon_status = (None, 1)
         if self._animating:
-            frame, self.summon_status, self.anim_idx = self.currShadow.render_frame(frame, self.summon_status, self.anim_idx)
+            frame, self.summon_status, self.anim_idx = self.currShadow.render_frame(frame, self.summon_status, self.anim_idx, self.training_mode)
             # render_frame resets summon_status when the loop ends
             if self.anim_idx == 0:
                 self.currShadow = None
@@ -237,8 +254,8 @@ class ShadowSummonerApp:
 
 if __name__ == "__main__":
     app = ShadowSummonerApp(
-        hand_model_path="tasks/hand_landmarker.task",
-        face_model_path="tasks/face_landmarker.task",
+        hand_model_path="../tasks/hand_landmarker.task",
+        face_model_path="../tasks/face_landmarker.task",
         training_mode=TRAIN_MODE,
         mirrored=True,
         show_preview=True,

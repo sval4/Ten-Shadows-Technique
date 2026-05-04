@@ -36,7 +36,7 @@ class Shadow:
         training_mode (bool): When True, incoming hand tensors are saved rather than matched.
     """
 
-    def __init__(self,name="Unknown",training_mode=False,frame_folder="",x=0,y=0,frame_size=(745,400),num_animations_loop=10,TENSOR_FILE="",MAX_SAMPLES=100,LOSS_THRESHOLD=0.0025) -> None:
+    def __init__(self,name="Unknown",frame_folder="",x=0,y=0,frame_size=(745,400),num_animations_loop=10,TENSOR_FILE="",MAX_SAMPLES=100,LOSS_THRESHOLD=0.0025) -> None:
         self.name=name
         self.frame_folder=frame_folder
         self.frame_size=frame_size
@@ -49,14 +49,15 @@ class Shadow:
         self._criterion = nn.MSELoss()
         self._stored_tensors: list[torch.Tensor] = []
         self._mean_tensor: torch.Tensor | None = None
-        self.animation_frames: list[np.ndarray] = self._load_animation_frames(training_mode)
+        self.animation_frames: list[np.ndarray] = self._load_animation_frames()
+        self.train_animation_frames: list[np.ndarray] = self.animation_frames[:1]
         self._load_mean_tensor()
 
     # ------------------------------------------------------------------
     # Animation helpers
     # ------------------------------------------------------------------
 
-    def _load_animation_frames(self, training_mode) -> list[np.ndarray]:
+    def _load_animation_frames(self) -> list[np.ndarray]:
         """Load and resize all PNG frames from `self.frame_folder`."""
         folder = self.frame_folder
         if not os.path.isdir(folder):
@@ -69,7 +70,7 @@ class Shadow:
             print(f"[{self.name}] Warning: No files found in '{folder}'.")
             return []
 
-        loops = 1 if training_mode else self.num_animations_loop
+        loops = self.num_animations_loop
         frames: list[np.ndarray] = []
 
         for _ in range(loops):
@@ -108,19 +109,27 @@ class Shadow:
         background[y : y + h, x : x + w] = (1.0 - alpha) * roi + alpha * overlay_rgb
         return background
 
-    def render_frame(self, frame: np.ndarray, summon_status, anim_idx) -> np.ndarray:
+    def render_frame(self, frame: np.ndarray, summon_status, anim_idx, training_mode=False) -> np.ndarray:
         """
         Built the current animation sprite onto `frame` (in-place) and
         advance the animation index.  Returns the modified frame.
         Resets summon status when the animation completes.
         """
-        if not self.animation_frames:
-            return frame
+        # 1. Determine which frames to use
+        frames = self.train_animation_frames if training_mode else self.animation_frames
 
-        sprite = self.animation_frames[anim_idx]
+        # 2. Guard clause: if no frames exist, return original state
+        if not frames:
+            return frame, summon_status, anim_idx
+
+        # 3. Apply the overlay
+        sprite = frames[anim_idx]
         frame = self.overlay_transparent(frame, sprite, x=self.x, y=self.y)
-        anim_idx = (anim_idx + 1) % len(self.animation_frames)
 
+        # 4. Advance index and handle wrap-around
+        anim_idx = (anim_idx + 1) % len(frames)
+
+        # 5. Reset summon status if animation completed a cycle
         if anim_idx == 0:
             summon_status = (None, 1)
 

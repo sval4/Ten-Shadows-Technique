@@ -1,7 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 
-data = torch.load("nue_tensors.pt")
+data = torch.load("../tensors/mahoraga_tensors.pt")
 stacked = torch.stack(data)  # shape: (num_samples, 42, 2)
 
 fig, ax = plt.subplots(figsize=(8, 8))
